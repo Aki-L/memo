@@ -6,7 +6,7 @@ const LOG = '[Memo:BG]';
 // Map notification IDs to document URLs so clicks can open them
 const notificationUrls = {};
 
-console.log(`${LOG} Service worker starting up`);
+console.log(`${LOG} Service worker starting up (v2 — with timeout)`);
 
 // --- Context Menu Setup ---
 chrome.runtime.onInstalled.addListener(() => {
