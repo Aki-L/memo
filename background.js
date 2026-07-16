@@ -1,7 +1,9 @@
 import { createDocument, appendToDocument, getDocument } from './lib/google-docs-api.js';
 
 const CONTEXT_MENU_ID = 'save-to-gdocs';
-const DOCS_SCOPE = 'https://www.googleapis.com/auth/documents';
+
+// Map notification IDs to document URLs so clicks can open them
+const notificationUrls = {};
 
 // --- Context Menu Setup ---
 chrome.runtime.onInstalled.addListener(() => {
@@ -10,6 +12,15 @@ chrome.runtime.onInstalled.addListener(() => {
     title: 'Save to Google Docs',
     contexts: ['selection']
   });
+});
+
+// --- Notification Click — open the saved document ---
+chrome.notifications.onClicked.addListener((notificationId) => {
+  const url = notificationUrls[notificationId];
+  if (url) {
+    chrome.tabs.create({ url });
+    delete notificationUrls[notificationId];
+  }
 });
 
 // --- Context Menu Click Handler ---
@@ -52,10 +63,11 @@ async function getAuthToken() {
 
 async function loadSettings() {
   const defaults = {
-    saveMode: 'append',    // 'append' | 'new'
-    targetDocId: '',        // stored after first save when mode is 'append'
-    prefix: '',             // optional text prepended to each selection
-    suffix: ''              // optional text appended to each selection
+    saveMode: 'append',
+    targetDocId: '',
+    targetDocUrl: '',
+    prefix: '',
+    suffix: ''
   };
   const stored = await chrome.storage.local.get(defaults);
   return stored;
@@ -69,11 +81,22 @@ function formatText(text, sourceUrl, settings) {
   if (settings.suffix) {
     result = result + settings.suffix;
   }
-  // Append source URL on a new line if available
   if (sourceUrl) {
     result += '\n— ' + sourceUrl;
   }
   return result;
+}
+
+function docUrl(documentId) {
+  return `https://docs.google.com/document/d/${documentId}/edit`;
+}
+
+function showNotification(title, message, url) {
+  chrome.notifications.create({ type: 'basic', iconUrl: 'assets/icon48.png', title, message }, (id) => {
+    if (url) {
+      notificationUrls[id] = url;
+    }
+  });
 }
 
 async function saveToNewDoc(token, text) {
@@ -81,12 +104,12 @@ async function saveToNewDoc(token, text) {
   const doc = await createDocument(token, title);
   await appendToDocument(token, doc.documentId, text);
 
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'assets/icon48.png',
-    title: 'Saved to Google Docs',
-    message: `Created new document: "${title}"`
-  });
+  const url = docUrl(doc.documentId);
+  showNotification(
+    'Saved to Google Docs',
+    `Created: "${title}"\nClick to open →`,
+    url
+  );
 }
 
 async function saveToDefaultDoc(token, text) {
@@ -94,33 +117,31 @@ async function saveToDefaultDoc(token, text) {
   let docId = settings.targetDocId;
 
   if (!docId) {
-    // First save — create the default doc and store its ID
     const title = 'Memo — Saved Selections';
     const doc = await createDocument(token, title);
     docId = doc.documentId;
-    await chrome.storage.local.set({ targetDocId: docId });
+    const url = docUrl(docId);
 
+    await chrome.storage.local.set({ targetDocId: docId, targetDocUrl: url });
     await appendToDocument(token, docId, text);
 
-    chrome.notifications.create({
-      type: 'basic',
-      iconUrl: 'assets/icon48.png',
-      title: 'Saved to Google Docs',
-      message: `Created default document. Future saves will append here.`
-    });
+    showNotification(
+      'Saved to Google Docs',
+      `Created: "${title}"\nClick to open →`,
+      url
+    );
     return;
   }
 
-  // Verify the stored doc still exists
   try {
     await getDocument(token, docId);
   } catch (err) {
     if (err.message.includes('404') || err.message.includes('not found')) {
-      // Doc was deleted — create a new one
       const title = 'Memo — Saved Selections';
       const doc = await createDocument(token, title);
       docId = doc.documentId;
-      await chrome.storage.local.set({ targetDocId: docId });
+      const url = docUrl(docId);
+      await chrome.storage.local.set({ targetDocId: docId, targetDocUrl: url });
     } else {
       throw err;
     }
@@ -128,12 +149,12 @@ async function saveToDefaultDoc(token, text) {
 
   await appendToDocument(token, docId, text);
 
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'assets/icon48.png',
-    title: 'Saved to Google Docs',
-    message: 'Text appended to your document.'
-  });
+  const url = docUrl(docId);
+  showNotification(
+    'Saved to Google Docs',
+    'Text appended.\nClick to open document →',
+    url
+  );
 }
 
 function handleError(err) {
@@ -143,14 +164,12 @@ function handleError(err) {
     chrome.identity.removeCachedToken({ token: '' }, () => {});
   }
 
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'assets/icon48.png',
-    title: 'Memo — Error',
-    message: err.message || 'Failed to save to Google Docs. Check your connection and try again.'
-  });
+  showNotification(
+    'Memo — Error',
+    err.message || 'Failed to save to Google Docs. Check your connection and try again.',
+    null
+  );
 
-  // If we get an auth error, clear cached token so next attempt re-prompts
   if (err.message?.includes('401') || err.message?.includes('auth')) {
     chrome.identity.removeCachedToken({ token: '' }, () => {});
   }

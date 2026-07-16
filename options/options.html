@@ -37,11 +37,14 @@
       <section class="card" id="default-doc-section">
         <h2>Default Document</h2>
         <p class="help-text">
-          The document ID will be set automatically after your first save. You can also paste a document ID manually.
+          Set automatically after your first save. You can also paste a document ID manually.
         </p>
         <div class="input-row">
           <label for="targetDocId">Document ID</label>
           <input type="text" id="targetDocId" placeholder="e.g. 1a2b3c4d5e...">
+        </div>
+        <div class="input-row" id="doc-link-row" style="display:none">
+          <a id="doc-link" href="#" target="_blank" class="doc-link">📄 Open your document →</a>
         </div>
         <button id="clear-doc" class="btn-secondary">Reset (create new on next save)</button>
       </section>

@@ -190,3 +190,17 @@ footer {
 .saved-indicator.visible {
   opacity: 1;
 }
+
+/* Document link */
+.doc-link {
+  display: inline-block;
+  font-size: 13px;
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 500;
+  padding: 4px 0;
+}
+
+.doc-link:hover {
+  text-decoration: underline;
+}

@@ -2,6 +2,7 @@
 const DEFAULTS = {
   saveMode: 'append',
   targetDocId: '',
+  targetDocUrl: '',
   prefix: '',
   suffix: ''
 };
@@ -16,6 +17,8 @@ const revokeAuthBtn = document.getElementById('revoke-auth');
 const savedIndicator = document.getElementById('saved-indicator');
 const authStatus = document.getElementById('auth-status');
 const defaultDocSection = document.getElementById('default-doc-section');
+const docLinkRow = document.getElementById('doc-link-row');
+const docLink = document.getElementById('doc-link');
 
 // --- Load Settings ---
 async function loadSettings() {
@@ -33,6 +36,14 @@ function applySettings(settings) {
   targetDocInput.value = settings.targetDocId || '';
   prefixInput.value = settings.prefix || '';
   suffixInput.value = settings.suffix || '';
+
+  // Document link
+  if (settings.targetDocUrl) {
+    docLink.href = settings.targetDocUrl;
+    docLinkRow.style.display = '';
+  } else {
+    docLinkRow.style.display = 'none';
+  }
 }
 
 function updateDocSectionVisibility(saveMode) {
@@ -63,7 +74,16 @@ saveModeRadios.forEach(radio => {
 });
 
 targetDocInput.addEventListener('change', () => {
-  saveSetting('targetDocId', targetDocInput.value.trim());
+  const docId = targetDocInput.value.trim();
+  saveSetting('targetDocId', docId);
+  if (docId) {
+    const url = `https://docs.google.com/document/d/${docId}/edit`;
+    chrome.storage.local.set({ targetDocUrl: url });
+    docLink.href = url;
+    docLinkRow.style.display = '';
+  } else {
+    docLinkRow.style.display = 'none';
+  }
 });
 
 prefixInput.addEventListener('input', () => {
@@ -76,7 +96,8 @@ suffixInput.addEventListener('input', () => {
 
 clearDocBtn.addEventListener('click', async () => {
   targetDocInput.value = '';
-  await chrome.storage.local.remove('targetDocId');
+  docLinkRow.style.display = 'none';
+  await chrome.storage.local.remove(['targetDocId', 'targetDocUrl']);
   showSaved();
 });
 
