@@ -78,7 +78,22 @@ async function handleSave(text, sourceUrl) {
 
 async function getAuthToken() {
   return new Promise((resolve, reject) => {
+    let settled = false;
+
+    // Timeout: identity API silently fails on chrome:// and edge:// pages
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        console.error(`${LOG} getAuthToken timed out after 8s — likely a chrome:// page`);
+        reject(new Error('Cannot authenticate on this page. Try on any website (https://...).'));
+      }
+    }, 8000);
+
     chrome.identity.getAuthToken({ interactive: true }, (token) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+
       const err = chrome.runtime.lastError;
       if (err || !token) {
         console.error(`${LOG} getAuthToken failed:`, err?.message);
