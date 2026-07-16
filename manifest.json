@@ -19,7 +19,7 @@
   },
   "options_page": "options/options.html",
   "oauth2": {
-    "client_id": "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "860369232440-kl0ov0pe6flo6e69dajc02ar5f6ul19q.apps.googleusercontent.com",
     "scopes": ["https://www.googleapis.com/auth/documents"]
   },
   "icons": {
