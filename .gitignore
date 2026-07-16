@@ -1,0 +1,2 @@
+# Keep your real client ID out of the repo
+# Run: cp manifest.json manifest.local.json   (and keep manifest.local.json as your working copy)
