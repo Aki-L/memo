@@ -77,70 +77,55 @@ async function handleSave(text, sourceUrl) {
 }
 
 async function getAuthToken() {
-  // Step 1: Try cached token first (non-interactive, fast)
-  console.log(`${LOG} getAuthToken: trying cached token (interactive=false)...`);
-  const cachedToken = await tryGetToken(false);
-  if (cachedToken) {
-    console.log(`${LOG} getAuthToken: cached token valid`);
-    return cachedToken;
+  // Step 1: Try interactive=true directly — Chrome returns a Promise natively
+  console.log(`${LOG} getAuthToken: requesting token (interactive=true, native Promise)...`);
+  try {
+    const token = await chrome.identity.getAuthToken({ interactive: true });
+    if (token) {
+      console.log(`${LOG} getAuthToken: success (length=${token.length})`);
+      return token;
+    }
+  } catch (err) {
+    console.error(`${LOG} getAuthToken rejected:`, err?.message || err);
   }
 
-  // Step 2: Cached token invalid/missing — clear it and try interactive
-  console.log(`${LOG} getAuthToken: cached token invalid, clearing...`);
-  await clearCachedToken();
+  // Step 2: If that failed, clear cached tokens and retry
+  console.log(`${LOG} getAuthToken: clearing cached tokens and retrying...`);
+  await clearAllCachedTokens();
 
-  console.log(`${LOG} getAuthToken: requesting new token (interactive=true)...`);
-  const newToken = await tryGetToken(true);
-  if (newToken) {
-    console.log(`${LOG} getAuthToken: new token obtained`);
-    return newToken;
+  try {
+    const token = await chrome.identity.getAuthToken({ interactive: true });
+    if (token) {
+      console.log(`${LOG} getAuthToken: retry success (length=${token.length})`);
+      return token;
+    }
+  } catch (err) {
+    console.error(`${LOG} getAuthToken retry rejected:`, err?.message || err);
   }
 
-  throw new Error('OAuth sign-in window did not appear. Try: (1) check popup blocker, (2) remove and re-add the extension in chrome://extensions, then try again.');
+  throw new Error('OAuth failed. The Google sign-in popup may be blocked. Check the address bar for a blocked popup icon, or try chrome://extensions → remove extension → load unpacked again.');
 }
 
-function tryGetToken(interactive) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        console.error(`${LOG} getAuthToken timed out after 10s (interactive=${interactive})`);
-        resolve(null);
-      }
-    }, 10000);
-
-    chrome.identity.getAuthToken({ interactive }, (token) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-
-      const err = chrome.runtime.lastError;
-      if (err || !token) {
-        console.error(`${LOG} getAuthToken callback error (interactive=${interactive}):`, err?.message || 'no token');
-        resolve(null);
-      } else {
-        console.log(`${LOG} getAuthToken callback success (interactive=${interactive})`);
-        resolve(token);
-      }
-    });
-  });
-}
-
-function clearCachedToken() {
-  return new Promise((resolve) => {
-    chrome.identity.getAuthToken({ interactive: false }, (token) => {
-      if (token) {
-        chrome.identity.removeCachedAuthToken({ token }, () => {
-          console.log(`${LOG} Cached token removed`);
-          resolve();
-        });
-      } else {
-        resolve();
-      }
-    });
-  });
+async function clearAllCachedTokens() {
+  // Try to get and remove any lingering cached token
+  try {
+    const token = await chrome.identity.getAuthToken({ interactive: false });
+    if (token) {
+      await chrome.identity.removeCachedAuthToken({ token });
+      console.log(`${LOG} Removed cached token`);
+    }
+  } catch (e) {
+    // No token to remove — fine
+  }
+  // Also try clearAllCachedAuthTokens if available (Chrome 118+)
+  if (chrome.identity.clearAllCachedAuthTokens) {
+    try {
+      await chrome.identity.clearAllCachedAuthTokens();
+      console.log(`${LOG} All cached auth tokens cleared`);
+    } catch (e) {
+      // ignore
+    }
+  }
 }
 
 async function loadSettings() {
