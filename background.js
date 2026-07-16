@@ -77,43 +77,54 @@ async function handleSave(text, sourceUrl) {
 }
 
 async function getAuthToken() {
-  // Step 1: Try native getAuthToken with interactive=true
-  console.log(`${LOG} getAuthToken: trying getAuthToken (interactive=true)...`);
-  try {
-    const token = await chrome.identity.getAuthToken({ interactive: true });
-    if (token) {
-      console.log(`${LOG} getAuthToken: success (length=${token.length})`);
-      return token;
-    }
-  } catch (err) {
-    console.error(`${LOG} getAuthToken rejected:`, err?.message || err);
+  // Step 1: Callback-based getAuthToken with interactive=true
+  console.log(`${LOG} getAuthToken: trying getAuthToken (interactive=true, callback)...`);
+  const token1 = await callGetAuthToken(true);
+  if (token1 && typeof token1 === 'string' && token1.length > 0) {
+    console.log(`${LOG} getAuthToken: success (length=${token1.length})`);
+    return token1;
   }
+  console.log(`${LOG} getAuthToken: no valid token (got ${typeof token1}: ${token1})`);
 
-  // Step 2: Clear cached tokens and retry getAuthToken once more
-  console.log(`${LOG} getAuthToken: clearing cached tokens and retrying getAuthToken...`);
+  // Step 2: Clear cached tokens and retry
+  console.log(`${LOG} getAuthToken: clearing cached tokens and retrying...`);
   await clearAllCachedTokens();
-  try {
-    const token = await chrome.identity.getAuthToken({ interactive: true });
-    if (token) {
-      console.log(`${LOG} getAuthToken: retry success (length=${token.length})`);
-      return token;
-    }
-  } catch (err) {
-    console.error(`${LOG} getAuthToken retry rejected:`, err?.message || err);
+  const token2 = await callGetAuthToken(true);
+  if (token2 && typeof token2 === 'string' && token2.length > 0) {
+    console.log(`${LOG} getAuthToken: retry success (length=${token2.length})`);
+    return token2;
   }
 
-  // Step 3: getAuthToken failed — fall back to launchWebAuthFlow
-  console.log(`${LOG} getAuthToken: getAuthToken failed, trying launchWebAuthFlow...`);
-  const webAuthToken = await launchOAuthFlow();
-  if (webAuthToken) {
-    console.log(`${LOG} getAuthToken: launchWebAuthFlow success`);
-    return webAuthToken;
+  // Step 3: Fall back to launchWebAuthFlow
+  console.log(`${LOG} getAuthToken: trying launchWebAuthFlow...`);
+  const token3 = await launchOAuthFlow();
+  if (token3 && typeof token3 === 'string' && token3.length > 0) {
+    console.log(`${LOG} getAuthToken: launchWebAuthFlow success (length=${token3.length})`);
+    return token3;
   }
 
   throw new Error(
     'Authentication failed. If you see "redirect_uri_mismatch", add this URI to your Google Cloud OAuth client: ' +
     chrome.identity.getRedirectURL()
   );
+}
+
+function callGetAuthToken(interactive) {
+  return new Promise((resolve) => {
+    chrome.identity.getAuthToken({ interactive }, (token) => {
+      const err = chrome.runtime.lastError;
+      if (err) {
+        console.error(`${LOG} getAuthToken callback error (interactive=${interactive}):`, err.message);
+        resolve(null);
+      } else if (!token) {
+        console.log(`${LOG} getAuthToken callback returned no token (interactive=${interactive})`);
+        resolve(null);
+      } else {
+        console.log(`${LOG} getAuthToken callback returned token type=${typeof token} len=${token.length}`);
+        resolve(token);
+      }
+    });
+  });
 }
 
 async function clearAllCachedTokens() {
@@ -308,8 +319,8 @@ function handleError(err) {
   console.error(`${LOG} handleError:`, err.message);
 
   if (err.message?.includes('OAuth') || err.message?.includes('token') || err.message?.includes('401') || err.message?.includes('auth')) {
-    console.log(`${LOG} Clearing cached auth token...`);
-    clearCachedToken();
+    console.log(`${LOG} Clearing cached auth tokens...`);
+    clearAllCachedTokens();
   }
 
   showNotification(
