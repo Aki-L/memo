@@ -77,30 +77,67 @@ async function handleSave(text, sourceUrl) {
 }
 
 async function getAuthToken() {
+  // Step 1: Try cached token first (non-interactive, fast)
+  console.log(`${LOG} getAuthToken: trying cached token (interactive=false)...`);
+  const cachedToken = await tryGetToken(false);
+  if (cachedToken) {
+    console.log(`${LOG} getAuthToken: cached token valid`);
+    return cachedToken;
+  }
+
+  // Step 2: Cached token invalid/missing — clear it and try interactive
+  console.log(`${LOG} getAuthToken: cached token invalid, clearing...`);
+  await clearCachedToken();
+
+  console.log(`${LOG} getAuthToken: requesting new token (interactive=true)...`);
+  const newToken = await tryGetToken(true);
+  if (newToken) {
+    console.log(`${LOG} getAuthToken: new token obtained`);
+    return newToken;
+  }
+
+  throw new Error('Failed to get auth token. Check your OAuth client configuration in Google Cloud Console.');
+}
+
+function tryGetToken(interactive) {
   return new Promise((resolve, reject) => {
     let settled = false;
 
-    // Timeout: identity API silently fails on chrome:// and edge:// pages
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
-        console.error(`${LOG} getAuthToken timed out after 8s — likely a chrome:// page`);
-        reject(new Error('Cannot authenticate on this page. Try on any website (https://...).'));
+        console.error(`${LOG} getAuthToken timed out after 10s (interactive=${interactive})`);
+        resolve(null); // resolve with null instead of rejecting — let caller decide next step
       }
-    }, 8000);
+    }, 10000);
 
-    chrome.identity.getAuthToken({ interactive: true }, (token) => {
+    chrome.identity.getAuthToken({ interactive }, (token) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
 
       const err = chrome.runtime.lastError;
       if (err || !token) {
-        console.error(`${LOG} getAuthToken failed:`, err?.message);
-        reject(new Error(err?.message || 'Failed to get auth token'));
+        console.error(`${LOG} getAuthToken callback error (interactive=${interactive}):`, err?.message || 'no token');
+        resolve(null);
       } else {
-        console.log(`${LOG} getAuthToken success`);
+        console.log(`${LOG} getAuthToken callback success (interactive=${interactive})`);
         resolve(token);
+      }
+    });
+  });
+}
+
+function clearCachedToken() {
+  return new Promise((resolve) => {
+    chrome.identity.getAuthToken({ interactive: false }, (token) => {
+      if (token) {
+        chrome.identity.removeCachedAuthToken({ token }, () => {
+          console.log(`${LOG} Cached token removed`);
+          resolve();
+        });
+      } else {
+        resolve();
       }
     });
   });
@@ -232,9 +269,9 @@ async function saveToDefaultDoc(token, text) {
 function handleError(err) {
   console.error(`${LOG} handleError:`, err.message);
 
-  if (err.message?.includes('OAuth') || err.message?.includes('token')) {
-    console.log(`${LOG} Clearing cached token`);
-    chrome.identity.removeCachedToken({ token: '' }, () => {});
+  if (err.message?.includes('OAuth') || err.message?.includes('token') || err.message?.includes('401') || err.message?.includes('auth')) {
+    console.log(`${LOG} Clearing cached auth token...`);
+    clearCachedToken();
   }
 
   showNotification(
@@ -242,8 +279,4 @@ function handleError(err) {
     err.message || 'Failed to save to Google Docs.',
     null
   );
-
-  if (err.message?.includes('401') || err.message?.includes('auth')) {
-    chrome.identity.removeCachedToken({ token: '' }, () => {});
-  }
 }
