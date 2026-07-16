@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Memo — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Memo</h1>
+      <p class="subtitle">Save selected text to Google Docs</p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>Save Mode</h2>
+        <div class="radio-group">
+          <label>
+            <input type="radio" name="saveMode" value="append" checked>
+            <span class="radio-label">
+              <strong>Append to default document</strong>
+              <small>All selections go into one document. A new doc is created on first save.</small>
+            </span>
+          </label>
+          <label>
+            <input type="radio" name="saveMode" value="new">
+            <span class="radio-label">
+              <strong>Always create new document</strong>
+              <small>A new Google Doc is created for each selection.</small>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <section class="card" id="default-doc-section">
+        <h2>Default Document</h2>
+        <p class="help-text">
+          The document ID will be set automatically after your first save. You can also paste a document ID manually.
+        </p>
+        <div class="input-row">
+          <label for="targetDocId">Document ID</label>
+          <input type="text" id="targetDocId" placeholder="e.g. 1a2b3c4d5e...">
+        </div>
+        <button id="clear-doc" class="btn-secondary">Reset (create new on next save)</button>
+      </section>
+
+      <section class="card">
+        <h2>Text Template</h2>
+        <p class="help-text">
+          Optional prefix and suffix added to each selection. The source URL is always appended on a new line.
+        </p>
+        <div class="input-row">
+          <label for="prefix">Prefix</label>
+          <input type="text" id="prefix" placeholder="e.g. 📌 ">
+        </div>
+        <div class="input-row">
+          <label for="suffix">Suffix</label>
+          <input type="text" id="suffix" placeholder="e.g. ---">
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Account</h2>
+        <p class="help-text">
+          To use this extension, you must sign in with Google and grant access to Google Docs.
+        </p>
+        <button id="revoke-auth" class="btn-danger">Disconnect Google Account</button>
+        <p id="auth-status" class="status-text"></p>
+      </section>
+    </main>
+
+    <footer>
+      <p class="saved-indicator" id="saved-indicator">All changes saved</p>
+    </footer>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

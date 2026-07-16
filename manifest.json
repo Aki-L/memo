@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Memo — Save to Google Docs",
+  "version": "1.0.0",
+  "description": "Save selected text to Google Docs via right-click context menu",
+  "permissions": [
+    "contextMenus",
+    "identity",
+    "storage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://docs.googleapis.com/*",
+    "https://www.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "options/options.html",
+  "oauth2": {
+    "client_id": "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/documents"]
+  },
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  }
+}
