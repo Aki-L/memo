@@ -77,8 +77,8 @@ async function handleSave(text, sourceUrl) {
 }
 
 async function getAuthToken() {
-  // Step 1: Try interactive=true directly — Chrome returns a Promise natively
-  console.log(`${LOG} getAuthToken: requesting token (interactive=true, native Promise)...`);
+  // Step 1: Try native getAuthToken with interactive=true
+  console.log(`${LOG} getAuthToken: trying getAuthToken (interactive=true)...`);
   try {
     const token = await chrome.identity.getAuthToken({ interactive: true });
     if (token) {
@@ -89,10 +89,9 @@ async function getAuthToken() {
     console.error(`${LOG} getAuthToken rejected:`, err?.message || err);
   }
 
-  // Step 2: If that failed, clear cached tokens and retry
-  console.log(`${LOG} getAuthToken: clearing cached tokens and retrying...`);
+  // Step 2: Clear cached tokens and retry getAuthToken once more
+  console.log(`${LOG} getAuthToken: clearing cached tokens and retrying getAuthToken...`);
   await clearAllCachedTokens();
-
   try {
     const token = await chrome.identity.getAuthToken({ interactive: true });
     if (token) {
@@ -103,28 +102,82 @@ async function getAuthToken() {
     console.error(`${LOG} getAuthToken retry rejected:`, err?.message || err);
   }
 
-  throw new Error('OAuth failed. The Google sign-in popup may be blocked. Check the address bar for a blocked popup icon, or try chrome://extensions → remove extension → load unpacked again.');
+  // Step 3: getAuthToken failed — fall back to launchWebAuthFlow
+  console.log(`${LOG} getAuthToken: getAuthToken failed, trying launchWebAuthFlow...`);
+  const webAuthToken = await launchOAuthFlow();
+  if (webAuthToken) {
+    console.log(`${LOG} getAuthToken: launchWebAuthFlow success`);
+    return webAuthToken;
+  }
+
+  throw new Error(
+    'Authentication failed. If you see "redirect_uri_mismatch", add this URI to your Google Cloud OAuth client: ' +
+    chrome.identity.getRedirectURL()
+  );
 }
 
 async function clearAllCachedTokens() {
-  // Try to get and remove any lingering cached token
   try {
     const token = await chrome.identity.getAuthToken({ interactive: false });
     if (token) {
       await chrome.identity.removeCachedAuthToken({ token });
       console.log(`${LOG} Removed cached token`);
     }
-  } catch (e) {
-    // No token to remove — fine
-  }
-  // Also try clearAllCachedAuthTokens if available (Chrome 118+)
+  } catch (e) { /* no token */ }
   if (chrome.identity.clearAllCachedAuthTokens) {
-    try {
-      await chrome.identity.clearAllCachedAuthTokens();
-      console.log(`${LOG} All cached auth tokens cleared`);
-    } catch (e) {
-      // ignore
+    try { await chrome.identity.clearAllCachedAuthTokens(); } catch (e) { /* ignore */ }
+  }
+}
+
+async function launchOAuthFlow() {
+  const manifest = chrome.runtime.getManifest();
+  const clientId = manifest.oauth2?.client_id;
+  const scope = (manifest.oauth2?.scopes || ['https://www.googleapis.com/auth/documents']).join(' ');
+
+  if (!clientId || clientId.includes('REPLACE')) {
+    console.error(`${LOG} launchOAuthFlow: no valid client_id in manifest`);
+    return null;
+  }
+
+  const redirectUri = chrome.identity.getRedirectURL();
+  console.log(`${LOG} launchOAuthFlow: redirectUri=${redirectUri}, clientId=${clientId}`);
+
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/auth');
+  authUrl.searchParams.set('client_id', clientId);
+  authUrl.searchParams.set('response_type', 'token');
+  authUrl.searchParams.set('redirect_uri', redirectUri);
+  authUrl.searchParams.set('scope', scope);
+
+  console.log(`${LOG} launchOAuthFlow: opening ${authUrl.toString().substring(0, 200)}...`);
+
+  try {
+    const responseUrl = await chrome.identity.launchWebAuthFlow({
+      url: authUrl.toString(),
+      interactive: true
+    });
+
+    if (!responseUrl) {
+      console.error(`${LOG} launchOAuthFlow: user cancelled or no response`);
+      return null;
     }
+
+    console.log(`${LOG} launchOAuthFlow: responseUrl=${responseUrl.substring(0, 120)}...`);
+
+    const hash = new URL(responseUrl).hash.slice(1);
+    const params = new URLSearchParams(hash);
+    const token = params.get('access_token');
+
+    if (token) {
+      console.log(`${LOG} launchOAuthFlow: token extracted (length=${token.length})`);
+      return token;
+    }
+
+    const error = params.get('error');
+    console.error(`${LOG} launchOAuthFlow: no token, error=${error}`);
+    return null;
+  } catch (err) {
+    console.error(`${LOG} launchOAuthFlow error:`, err.message);
+    return null;
   }
 }
 
